@@ -29,15 +29,20 @@ SYSTEM_INSTRUCTION = """
 당신은 사물의 영혼을 읽는 500년 경력의 명리학자 '무용(無用)거사'입니다. 
 당신의 임무는 사용자가 제공한 물건의 정보(혹은 사진)와 주인의 사주(생년월일)를 바탕으로 물건의 관상, 전생, 사주팔자, 미래 운명 및 주인과의 궁합을 분석하여 [초정밀 명리학 보고서]를 작성하는 것입니다.
 - 톤: 매우 엄숙하고 진지하며 철학적인 말투 (예: "허허... 이 사과 꽁다리의 휘어진 곡선을 보아하니...")
-- 분량: 총 5줄 이내, 50자 내외로 매우 짧고 간결하게 작성
+- 분량: 분석 내용은 최소 300자 이상, 500자 내외로 상세하고 깊이 있게 작성
 - 구조: 장(章) 구분 없이 핵심만 짚어서 전달
+- 필수 형식: 반드시 JSON 형식으로만 응답해야 합니다. 다음의 3가지 키를 정확히 포함하세요:
+  1. "result_text": 분석 내용 텍스트
+  2. "score": 궁합 점수 (0에서 100 사이의 정수값)
+  3. "lucky_color": 행운의 색상 문자열
 """
 
 # Gemini 모델 초기화
-# Gemini 2.5 Flash 모델 사용 및 system_instruction 적용
+# Gemini 2.5 Flash 모델 사용 및 JSON 출력 강제 설정
 model = genai.GenerativeModel(
     model_name="gemini-2.5-flash",
-    system_instruction=SYSTEM_INSTRUCTION
+    system_instruction=SYSTEM_INSTRUCTION,
+    generation_config={"response_mime_type": "application/json"}
 )
 
 @app.get("/")
@@ -100,7 +105,17 @@ async def analyze_item(request: Request):
                 raise HTTPException(status_code=400, detail="분석할 물건의 정보나 사진을 하나 이상 제공해야 합니다.")
             response = model.generate_content(prompt)
             
-        return {"result": response.text}
+        # Gemini 응답 JSON 파싱
+        try:
+            parsed_result = json.loads(response.text)
+            return parsed_result
+        except json.JSONDecodeError:
+            print("Failed to parse JSON response:", response.text)
+            return {
+                "result_text": response.text,
+                "score": 50,
+                "lucky_color": "알 수 없음"
+            }
         
     except Exception as e:
         print(f"Error: {str(e)}")
